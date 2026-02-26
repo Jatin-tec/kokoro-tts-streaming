@@ -1,0 +1,27 @@
+services:
+  kokoro-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kokoro-tts-server
+    ports:
+      - "${HOST_PORT:-5001}:5000"
+    volumes:
+      # Persist HuggingFace model cache across container restarts
+      - kokoro-hf-cache:/app/hf_cache
+    environment:
+      - HF_HOME=/app/hf_cache
+      - HOST=0.0.0.0
+      - PORT=5000
+      - WORKERS=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  kokoro-hf-cache:
+    driver: local

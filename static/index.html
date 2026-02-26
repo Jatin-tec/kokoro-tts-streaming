@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kokoro TTS</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f0f13;
+        color: #e2e2e8;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .card {
+        background: #1a1a24;
+        border: 1px solid #2e2e42;
+        border-radius: 16px;
+        padding: 36px 40px;
+        width: 100%;
+        max-width: 660px;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+      }
+      h1 {
+        font-size: 1.4rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-bottom: 28px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      h1 .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #7c6af7;
+        display: inline-block;
+      }
+      label {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #9090b0;
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      textarea {
+        width: 100%;
+        min-height: 130px;
+        background: #12121a;
+        border: 1px solid #2e2e42;
+        border-radius: 10px;
+        color: #e2e2e8;
+        font-size: 1rem;
+        line-height: 1.6;
+        padding: 14px 16px;
+        resize: vertical;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      textarea:focus {
+        border-color: #7c6af7;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        margin-top: 18px;
+      }
+      .row > div {
+        flex: 1;
+      }
+      select {
+        width: 100%;
+        background: #12121a;
+        border: 1px solid #2e2e42;
+        border-radius: 10px;
+        color: #e2e2e8;
+        font-size: 0.95rem;
+        padding: 10px 14px;
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.2s;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237c6af7' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 14px center;
+      }
+      select:focus {
+        border-color: #7c6af7;
+      }
+      .speed-label-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .speed-val {
+        font-size: 0.9rem;
+        color: #7c6af7;
+        font-weight: 600;
+      }
+      input[type="range"] {
+        width: 100%;
+        margin-top: 8px;
+        height: 4px;
+        accent-color: #7c6af7;
+        cursor: pointer;
+        background: transparent;
+      }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: #2e2e42;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #7c6af7;
+        margin-top: -6px;
+        cursor: pointer;
+        box-shadow: 0 0 0 2px #0f0f13;
+      }
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 24px;
+      }
+      .speak-btn,
+      .stop-btn {
+        flex: 1;
+        padding: 14px;
+        font-size: 1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition:
+          background 0.2s,
+          opacity 0.2s,
+          transform 0.1s;
+        letter-spacing: 0.03em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .speak-btn {
+        background: #7c6af7;
+        color: #fff;
+      }
+      .speak-btn:hover:not(:disabled) {
+        background: #6a58e8;
+      }
+      .speak-btn:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+      .speak-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .stop-btn {
+        background: #2e2e42;
+        color: #e2e2e8;
+        display: none;
+      }
+      .stop-btn:hover {
+        background: #3a3a5a;
+      }
+      /* Progress bar */
+      .progress-wrap {
+        margin-top: 18px;
+        display: none;
+      }
+      .progress-track {
+        height: 4px;
+        background: #2e2e42;
+        border-radius: 2px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #7c6af7;
+        border-radius: 2px;
+        transition: width 0.3s ease;
+      }
+      /* Waveform visualiser */
+      canvas {
+        width: 100%;
+        height: 56px;
+        display: block;
+        border-radius: 8px;
+        background: #12121a;
+        margin-top: 4px;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 0.82rem;
+        color: #9090b0;
+        min-height: 18px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .spinner {
+        width: 13px;
+        height: 13px;
+        border: 2px solid #3a3a5a;
+        border-top-color: #7c6af7;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .chunk-badge {
+        display: inline-block;
+        background: #7c6af730;
+        color: #a090ff;
+        border-radius: 4px;
+        padding: 1px 7px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+      optgroup {
+        color: #9090b0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1><span class="dot"></span> Kokoro TTS</h1>
+
+      <label for="text">Text</label>
+      <textarea id="text" placeholder="Enter text to synthesise…">
+Kokoro is a high quality neural text to speech engine. Audio chunks are streamed sentence by sentence and played back immediately using the Web Audio API, so you hear the first sentence before the rest is even generated.</textarea
+      >
+
+      <div class="row">
+        <div>
+          <label for="voice">Voice</label>
+          <select id="voice">
+            <optgroup label="American English">
+              <option value="af_bella" selected>af_bella — Bella (F)</option>
+              <option value="af_sarah">af_sarah — Sarah (F)</option>
+              <option value="af_nicole">af_nicole — Nicole (F)</option>
+              <option value="af_sky">af_sky — Sky (F)</option>
+              <option value="am_adam">am_adam — Adam (M)</option>
+              <option value="am_michael">am_michael — Michael (M)</option>
+            </optgroup>
+            <optgroup label="British English">
+              <option value="bf_emma">bf_emma — Emma (F)</option>
+              <option value="bf_isabella">bf_isabella — Isabella (F)</option>
+              <option value="bm_george">bm_george — George (M)</option>
+              <option value="bm_lewis">bm_lewis — Lewis (M)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div>
+          <div class="speed-label-row">
+            <label for="speed">Speed</label>
+            <span class="speed-val" id="speedVal">1.0×</span>
+          </div>
+          <input
+            type="range"
+            id="speed"
+            min="0.5"
+            max="2.0"
+            step="0.05"
+            value="1.0"
+          />
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="speak-btn" id="speakBtn">▶ Speak</button>
+        <button class="stop-btn" id="stopBtn">■ Stop</button>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <canvas id="waveCanvas"></canvas>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <script>
+      /* ── speed slider ── */
+      const speedEl = document.getElementById("speed");
+      const speedVal = document.getElementById("speedVal");
+      speedEl.addEventListener(
+        "input",
+        () =>
+          (speedVal.textContent = parseFloat(speedEl.value).toFixed(2) + "×"),
+      );
+
+      /* ── waveform visualiser ── */
+      const canvas = document.getElementById("waveCanvas");
+      const ctx2d = canvas.getContext("2d");
+      let visAnim = null;
+      let analyser = null;
+
+      function startVisualiser(audioCtx, sourceNode) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        function draw() {
+          visAnim = requestAnimationFrame(draw);
+          analyser.getByteTimeDomainData(buf);
+          const W = canvas.offsetWidth * devicePixelRatio;
+          const H = canvas.offsetHeight * devicePixelRatio;
+          canvas.width = W;
+          canvas.height = H;
+          ctx2d.clearRect(0, 0, W, H);
+          ctx2d.lineWidth = 2;
+          ctx2d.strokeStyle = "#7c6af7";
+          ctx2d.beginPath();
+          const sliceW = W / buf.length;
+          let x = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const y = ((buf[i] / 128) * H) / 2;
+            i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+            x += sliceW;
+          }
+          ctx2d.stroke();
+        }
+        draw();
+      }
+
+      function stopVisualiser() {
+        if (visAnim) {
+          cancelAnimationFrame(visAnim);
+          visAnim = null;
+        }
+        if (canvas) {
+          ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      /* ── state ── */
+      let abortCtrl = null; // AbortController for the fetch
+      let audioCtx = null; // Web Audio context (reused across requests)
+
+      /* ── main ── */
+      document.getElementById("speakBtn").addEventListener("click", startSpeak);
+      document.getElementById("stopBtn").addEventListener("click", stopSpeak);
+      document.getElementById("text").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) startSpeak();
+      });
+
+      async function startSpeak() {
+        const text = document.getElementById("text").value.trim();
+        if (!text) {
+          setStatus("", "Please enter some text.");
+          return;
+        }
+
+        const voice = document.getElementById("voice").value;
+        const speed = parseFloat(speedEl.value);
+
+        /* reset any previous run */
+        stopSpeak();
+
+        abortCtrl = new AbortController();
+
+        /* resume / create AudioContext (browsers require user gesture first) */
+        if (!audioCtx || audioCtx.state === "closed") {
+          audioCtx = new AudioContext({ sampleRate: 24000 });
+        }
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+
+        /* create a gain node as the "master" so visualiser can tap it */
+        const gainNode = audioCtx.createGain();
+        gainNode.connect(audioCtx.destination);
+        startVisualiser(audioCtx, gainNode);
+
+        setStatus("spinner", "Connecting…");
+        setProgress(0, true);
+        document.getElementById("speakBtn").disabled = true;
+        document.getElementById("stopBtn").style.display = "flex";
+
+        const SAMPLE_RATE = 24000;
+        const INITIAL_LATENCY = 0.08; // seconds before first chunk plays
+        let nextStartTime = audioCtx.currentTime + INITIAL_LATENCY;
+        let leftover = new Uint8Array(0);
+        let chunkCount = 0;
+        let totalBytes = 0;
+        let streamDone = false;
+
+        /* schedule one PCM16 chunk to play at nextStartTime, returns new nextStartTime */
+        function scheduleChunk(int16Samples) {
+          const buf = audioCtx.createBuffer(
+            1,
+            int16Samples.length,
+            SAMPLE_RATE,
+          );
+          const f32 = buf.getChannelData(0);
+          for (let i = 0; i < int16Samples.length; i++)
+            f32[i] = int16Samples[i] / 32767;
+
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          src.connect(gainNode);
+
+          /* keep nextStartTime at least a tiny bit ahead of now to avoid glitches */
+          const now = audioCtx.currentTime;
+          if (nextStartTime < now) nextStartTime = now + 0.01;
+          src.start(nextStartTime);
+          nextStartTime += buf.duration;
+
+          return buf.duration;
+        }
+
+        try {
+          const resp = await fetch("/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, voice, speed }),
+            signal: abortCtrl.signal,
+          });
+
+          if (!resp.ok)
+            throw new Error(`Server ${resp.status}: ${await resp.text()}`);
+
+          setStatus("spinner", "Streaming… ");
+          const reader = resp.body.getReader();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              streamDone = true;
+              break;
+            }
+
+            /* accumulate and process complete int16 samples (2 bytes each) */
+            const merged = new Uint8Array(leftover.length + value.length);
+            merged.set(leftover);
+            merged.set(value, leftover.length);
+
+            const usable = Math.floor(merged.length / 2) * 2;
+            leftover = merged.slice(usable);
+            const samples = new Int16Array(merged.buffer, 0, usable / 2);
+
+            if (samples.length > 0) {
+              scheduleChunk(samples);
+              chunkCount++;
+              totalBytes += usable;
+              setStatus(
+                "spinner",
+                `Streaming… <span class="chunk-badge">${chunkCount} chunk${chunkCount > 1 ? "s" : ""}</span>`,
+              );
+              /* rough progress: ramp up to 80% while streaming, finish at 100% */
+              setProgress(Math.min(80, chunkCount * 12), true);
+            }
+          }
+
+          /* flush any remaining bytes (shouldn't happen, PCM is always even) */
+          if (leftover.length >= 2) {
+            const samples = new Int16Array(
+              leftover.buffer,
+              0,
+              Math.floor(leftover.length / 2),
+            );
+            scheduleChunk(samples);
+            chunkCount++;
+          }
+
+          setProgress(100, true);
+          const kb = (totalBytes / 1024).toFixed(1);
+          setStatus(
+            "",
+            `Done — ${chunkCount} chunk${chunkCount > 1 ? "s" : ""}, ${kb} KB`,
+          );
+
+          /* hide stop button once playback finishes */
+          const remaining = (nextStartTime - audioCtx.currentTime) * 1000;
+          setTimeout(finishUI, Math.max(0, remaining));
+        } catch (e) {
+          if (e.name === "AbortError") {
+            setStatus("", "Stopped.");
+          } else {
+            setStatus("", "⚠ " + e.message);
+            console.error(e);
+          }
+          finishUI();
+        }
+      }
+
+      function stopSpeak() {
+        if (abortCtrl) {
+          abortCtrl.abort();
+          abortCtrl = null;
+        }
+        if (audioCtx && audioCtx.state !== "closed") {
+          /* suspend to immediately silence all scheduled nodes */
+          audioCtx.suspend();
+          /* close and null so next speak() gets a fresh context */
+          audioCtx.close();
+          audioCtx = null;
+        }
+        stopVisualiser();
+        finishUI();
+      }
+
+      function finishUI() {
+        document.getElementById("speakBtn").disabled = false;
+        document.getElementById("stopBtn").style.display = "none";
+        stopVisualiser();
+      }
+
+      function setStatus(type, html) {
+        document.getElementById("status").innerHTML =
+          type === "spinner" ? '<span class="spinner"></span>' + html : html;
+      }
+
+      function setProgress(pct, show) {
+        const wrap = document.getElementById("progressWrap");
+        wrap.style.display = show ? "block" : "none";
+        document.getElementById("progressFill").style.width = pct + "%";
+      }
+    </script>
+  </body>
+</html>
