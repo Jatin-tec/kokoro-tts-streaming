@@ -1,9 +1,10 @@
 FROM python:3.11-slim
 
-# System deps: espeak-ng (phonemizer backend), curl for healthcheck
+# System deps: espeak-ng (phonemizer backend), ffmpeg (MP3 encoding), curl for healthcheck
 RUN apt-get update && apt-get install -y \
     espeak-ng \
     espeak-ng-data \
+    ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -11,11 +12,13 @@ RUN apt-get update && apt-get install -y \
 #   kokoro   – official Kokoro 82M v1.0 inference library (auto-downloads weights)
 #   soundfile – WAV I/O
 #   fastapi + uvicorn – HTTP streaming server
+#   pydub – MP3 encoding (requires ffmpeg)
 RUN pip install --no-cache-dir \
     kokoro \
     soundfile \
     fastapi \
-    "uvicorn[standard]"
+    "uvicorn[standard]" \
+    pydub
 
 WORKDIR /app
 

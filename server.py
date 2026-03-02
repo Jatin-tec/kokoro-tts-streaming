@@ -12,11 +12,13 @@ GET  /health
 """
 
 import struct
+import io
 from pathlib import Path
 import numpy as np
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel
+from pydub import AudioSegment
 
 # ── Load Kokoro pipeline once at startup ────────────────────────────────────
 from kokoro import KPipeline
@@ -73,6 +75,20 @@ def audio_to_pcm16(audio: np.ndarray) -> bytes:
     """Convert float32 numpy array → int16 PCM bytes."""
     clipped = np.clip(audio, -1.0, 1.0)
     return (clipped * 32767).astype(np.int16).tobytes()
+
+
+def pcm16_to_mp3(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
+    """Convert PCM16 bytes to MP3 using pydub."""
+    audio_segment = AudioSegment(
+        data=pcm_bytes,
+        sample_width=2,  # 16-bit = 2 bytes
+        frame_rate=sample_rate,
+        channels=1
+    )
+    
+    mp3_buffer = io.BytesIO()
+    audio_segment.export(mp3_buffer, format="mp3", bitrate="64k")
+    return mp3_buffer.getvalue()
 
 
 # ── API ─────────────────────────────────────────────────────────────────────
@@ -137,4 +153,37 @@ def tts_wav(req: TTSRequest):
     return StreamingResponse(
         _wav_stream(),
         media_type="audio/wav",
+    )
+
+
+@app.post("/tts.mp3", summary="Stream MP3 audio")
+def tts_mp3(req: TTSRequest):
+    """
+    Streams MP3-encoded audio suitable for browser playback.
+    Collects PCM chunks and converts them to MP3 format.
+    """
+    def _stream_mp3():
+        # Collect all PCM chunks first for better MP3 quality
+        pcm_chunks = []
+        lang = voice_to_lang(req.voice)
+        pipeline = get_pipeline(lang)
+        
+        for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=req.speed):
+            if audio is not None and len(audio) > 0:
+                pcm_chunks.append(audio_to_pcm16(np.array(audio)))
+        
+        # Convert all PCM to MP3 in one go for valid MP3 stream
+        if pcm_chunks:
+            full_pcm = b''.join(pcm_chunks)
+            mp3_data = pcm16_to_mp3(full_pcm)
+            yield mp3_data
+    
+    return StreamingResponse(
+        _stream_mp3(),
+        media_type="audio/mpeg",
+        headers={
+            "X-Audio-Format": "mp3",
+            "X-Sample-Rate": str(SAMPLE_RATE),
+            "X-Bitrate": "64",
+        },
     )
