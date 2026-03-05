@@ -71,6 +71,8 @@ Use this endpoint when you need a self-contained audio file or when piping outpu
 
 Returns **MP3-encoded audio** optimized for browser playback and streaming applications.
 
+**⚡ Low Latency Streaming:** Uses FFmpeg for real-time PCM→MP3 conversion. Audio chunks are sent to the client as they're generated, resulting in **<500ms time-to-first-byte** regardless of text length.
+
 **Request body (JSON):** Same as `/tts` and `/tts.wav`
 
 **Response:**
@@ -91,6 +93,7 @@ Returns **MP3-encoded audio** optimized for browser playback and streaming appli
 - Streaming to mobile apps
 - When you need compressed audio (smaller file size than WAV)
 - Base64-encoded audio streams for web APIs
+- **Low latency requirements** (first audio chunk arrives in <500ms)
 
 ---
 

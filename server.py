@@ -13,6 +13,9 @@ GET  /health
 
 import struct
 import io
+import subprocess
+import threading
+import queue
 from pathlib import Path
 import numpy as np
 from fastapi import FastAPI
@@ -91,6 +94,75 @@ def pcm16_to_mp3(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return mp3_buffer.getvalue()
 
 
+def pcm16_to_mp3_streaming(pcm_chunks_iterator, sample_rate: int = SAMPLE_RATE):
+    """
+    Stream PCM chunks through FFmpeg to get MP3 chunks in real-time.
+    This enables true streaming with low latency.
+    """
+    process = subprocess.Popen(
+        [
+            'ffmpeg',
+            '-f', 's16le',          # signed 16-bit little-endian PCM
+            '-ar', str(sample_rate), # sample rate
+            '-ac', '1',              # mono
+            '-i', 'pipe:0',          # input from stdin
+            '-f', 'mp3',             # output format MP3
+            '-b:a', '64k',           # bitrate
+            '-',                     # output to stdout
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        bufsize=0
+    )
+    
+    output_queue = queue.Queue(maxsize=10)
+    error_holder = {'error': None}
+    
+    def write_input():
+        """Write PCM chunks to FFmpeg stdin."""
+        try:
+            for pcm_chunk in pcm_chunks_iterator:
+                if process.poll() is not None:
+                    break
+                process.stdin.write(pcm_chunk)
+                process.stdin.flush()
+            process.stdin.close()
+        except Exception as e:
+            error_holder['error'] = e
+    
+    def read_output():
+        """Read MP3 chunks from FFmpeg stdout."""
+        try:
+            while True:
+                chunk = process.stdout.read(4096)
+                if not chunk:
+                    break
+                output_queue.put(chunk)
+        except Exception as e:
+            error_holder['error'] = e
+        finally:
+            output_queue.put(None)  # Signal end of stream
+    
+    # Start threads
+    input_thread = threading.Thread(target=write_input, daemon=True)
+    output_thread = threading.Thread(target=read_output, daemon=True)
+    input_thread.start()
+    output_thread.start()
+    
+    # Yield MP3 chunks as they become available
+    while True:
+        chunk = output_queue.get()
+        if chunk is None:
+            break
+        yield chunk
+    
+    # Cleanup
+    process.wait()
+    if error_holder['error']:
+        raise error_holder['error']
+
+
 # ── API ─────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Kokoro TTS", version="1.0")
@@ -159,24 +231,20 @@ def tts_wav(req: TTSRequest):
 @app.post("/tts.mp3", summary="Stream MP3 audio")
 def tts_mp3(req: TTSRequest):
     """
-    Streams MP3-encoded audio suitable for browser playback.
-    Collects PCM chunks and converts them to MP3 format.
+    Streams MP3-encoded audio with low latency.
+    Uses FFmpeg for real-time PCM→MP3 conversion as audio is generated.
     """
     def _stream_mp3():
-        # Collect all PCM chunks first for better MP3 quality
-        pcm_chunks = []
-        lang = voice_to_lang(req.voice)
-        pipeline = get_pipeline(lang)
+        def pcm_generator():
+            """Generate PCM chunks as Kokoro produces them."""
+            lang = voice_to_lang(req.voice)
+            pipeline = get_pipeline(lang)
+            for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=req.speed):
+                if audio is not None and len(audio) > 0:
+                    yield audio_to_pcm16(np.array(audio))
         
-        for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=req.speed):
-            if audio is not None and len(audio) > 0:
-                pcm_chunks.append(audio_to_pcm16(np.array(audio)))
-        
-        # Convert all PCM to MP3 in one go for valid MP3 stream
-        if pcm_chunks:
-            full_pcm = b''.join(pcm_chunks)
-            mp3_data = pcm16_to_mp3(full_pcm)
-            yield mp3_data
+        # Stream PCM through FFmpeg to get MP3 chunks in real-time
+        yield from pcm16_to_mp3_streaming(pcm_generator())
     
     return StreamingResponse(
         _stream_mp3(),
