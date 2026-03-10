@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kokoro TTS</title>
+    <title>Piper TTS</title>
     <style>
       *,
       *::before,
@@ -247,11 +247,11 @@
   </head>
   <body>
     <div class="card">
-      <h1><span class="dot"></span> Kokoro TTS</h1>
+      <h1><span class="dot"></span> Piper TTS</h1>
 
       <label for="text">Text</label>
-      <textarea id="text" placeholder="Enter text to synthesise…">
-Kokoro is a high quality neural text to speech engine. Audio chunks are streamed sentence by sentence and played back immediately using the Web Audio API, so you hear the first sentence before the rest is even generated.</textarea
+      <textarea id="text" placeholder="Enter text to synthesize…">
+Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence. Use [[phonemes]] syntax for IPA phonemes.</textarea
       >
 
       <div class="row">
@@ -259,18 +259,7 @@ Kokoro is a high quality neural text to speech engine. Audio chunks are streamed
           <label for="voice">Voice</label>
           <select id="voice">
             <optgroup label="American English">
-              <option value="af_bella" selected>af_bella — Bella (F)</option>
-              <option value="af_sarah">af_sarah — Sarah (F)</option>
-              <option value="af_nicole">af_nicole — Nicole (F)</option>
-              <option value="af_sky">af_sky — Sky (F)</option>
-              <option value="am_adam">am_adam — Adam (M)</option>
-              <option value="am_michael">am_michael — Michael (M)</option>
-            </optgroup>
-            <optgroup label="British English">
-              <option value="bf_emma">bf_emma — Emma (F)</option>
-              <option value="bf_isabella">bf_isabella — Isabella (F)</option>
-              <option value="bm_george">bm_george — George (M)</option>
-              <option value="bm_lewis">bm_lewis — Lewis (M)</option>
+              <option value="en_US-lessac-high" selected>lessac-high — Lessac (F, 22 kHz)</option>
             </optgroup>
           </select>
         </div>
@@ -402,8 +391,8 @@ Kokoro is a high quality neural text to speech engine. Audio chunks are streamed
         document.getElementById("speakBtn").disabled = true;
         document.getElementById("stopBtn").style.display = "flex";
 
-        const SAMPLE_RATE = 24000;
-        const INITIAL_LATENCY = 0.08; // seconds before first chunk plays
+        const SAMPLE_RATE = 22050;
+        const INITIAL_LATENCY = 0.15; // seconds before first chunk plays
         let nextStartTime = audioCtx.currentTime + INITIAL_LATENCY;
         let leftover = new Uint8Array(0);
         let chunkCount = 0;

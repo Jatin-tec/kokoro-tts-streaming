@@ -1,0 +1,128 @@
+[
+  {
+    "id": 1,
+    "name": "Bella",
+    "voiceId": "af_bella",
+    "langID": "en-US",
+    "gender": "female",
+    "filter": [
+      "female",
+      "american",
+      "professional"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 2,
+    "name": "Sarah",
+    "voiceId": "af_sarah",
+    "langID": "en-US",
+    "gender": "female",
+    "filter": [
+      "female",
+      "american",
+      "warm"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 3,
+    "name": "Nicole",
+    "voiceId": "af_nicole",
+    "langID": "en-US",
+    "gender": "female",
+    "filter": [
+      "female",
+      "american",
+      "casual"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 4,
+    "name": "Adam",
+    "voiceId": "am_adam",
+    "langID": "en-US",
+    "gender": "male",
+    "filter": [
+      "male",
+      "american",
+      "professional"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 5,
+    "name": "Michael",
+    "voiceId": "am_michael",
+    "langID": "en-US",
+    "gender": "male",
+    "filter": [
+      "male",
+      "american",
+      "casual"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 6,
+    "name": "Emma",
+    "voiceId": "bf_emma",
+    "langID": "en-GB",
+    "gender": "female",
+    "filter": [
+      "female",
+      "british",
+      "professional"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 7,
+    "name": "Isabella",
+    "voiceId": "bf_isabella",
+    "langID": "en-GB",
+    "gender": "female",
+    "filter": [
+      "female",
+      "british",
+      "warm"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 8,
+    "name": "George",
+    "voiceId": "bm_george",
+    "langID": "en-GB",
+    "gender": "male",
+    "filter": [
+      "male",
+      "british",
+      "professional"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  },
+  {
+    "id": 9,
+    "name": "Lewis",
+    "voiceId": "bm_lewis",
+    "langID": "en-GB",
+    "gender": "male",
+    "filter": [
+      "male",
+      "british",
+      "casual"
+    ],
+    "voice_url": "https://agenq-kokoro-tts.canadacentral.cloudapp.azure.com/tts.wav",
+    "TTS_provider": "kokoro"
+  }
+]

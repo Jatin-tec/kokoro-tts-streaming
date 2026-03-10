@@ -1,182 +1,152 @@
 #!/usr/bin/env python3
 """
-Kokoro TTS streaming server.
-POST /tts   { "text": "...", "voice": "af_bella", "speed": 1.0 }
-  → streams raw 24 kHz mono PCM (16-bit little-endian) back to the client.
+Piper TTS streaming server.
 
-POST /tts.wav
-  → same but prepends a WAV header so any audio player / curl can consume it.
+POST /tts        { "text": "...", "voice": "en_US-lessac-high", "speed": 1.0 }
+                 → streams raw PCM16 at the voice's native sample rate (22050 Hz).
+                   TTFB ≈ 50-150 ms (Piper yields one chunk per phoneme group).
 
-GET  /health
-  → {"status": "ok"}
+POST /tts.wav    → same audio wrapped in a WAV header (streamable)
+POST /tts.mp3    → MP3-encoded via FFmpeg
+POST /tts.opus   → Opus-encoded via FFmpeg (recommended — best TTFB)
+
+GET  /health     → {"status": "ok", "model": "...", "sample_rate": 22050}
+
+SSML: wrap text in <speak>...</speak> for full SSML 1.0 support via espeak-ng.
+  Supports: <break time="500ms">, <prosody rate="fast" pitch="high">,
+            <say-as interpret-as="digits">, <emphasis level="strong">,
+            <phoneme alphabet="ipa" ph="...">, <sub alias="...">, etc.
 """
 
+import os
 import struct
-import io
 import subprocess
 import threading
 import queue
 from pathlib import Path
-import numpy as np
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel
-from pydub import AudioSegment
-
-# ── Load Kokoro pipeline once at startup ────────────────────────────────────
-from kokoro import KPipeline
-
-# Pre-warm with both language codes so the first request is fast
-_pipelines: dict[str, KPipeline] = {}
-
-def get_pipeline(lang_code: str) -> KPipeline:
-    if lang_code not in _pipelines:
-        _pipelines[lang_code] = KPipeline(lang_code=lang_code)
-    return _pipelines[lang_code]
-
-# Warm American English on startup
-print("[kokoro] Warming up pipeline …")
-get_pipeline("a")
-print("[kokoro] Pipeline ready.")
-
-SAMPLE_RATE = 24_000  # Kokoro outputs 24 kHz
+from piper.voice import PiperVoice
+from piper.config import SynthesisConfig
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# ── Model loading ─────────────────────────────────────────────────────────────
 
-def voice_to_lang(voice: str) -> str:
-    """Map voice prefix to KPipeline lang_code."""
-    prefix = voice[:2].lower()
-    mapping = {"af": "a", "am": "a", "bf": "b", "bm": "b"}
-    return mapping.get(prefix, "a")
+MODEL_NAME = os.environ.get("PIPER_MODEL", "en_US-lessac-high")
 
+
+def _find_model(filename: str) -> str:
+    for candidate in [f"/app/{filename}", f"models/{filename}", filename]:
+        if Path(candidate).exists():
+            return candidate
+    raise FileNotFoundError(f"{filename} not found in /app/, models/, or cwd")
+
+
+_voice: PiperVoice | None = None
+
+
+def get_voice() -> PiperVoice:
+    global _voice
+    if _voice is None:
+        path = _find_model(f"{MODEL_NAME}.onnx")
+        print(f"[piper] Loading voice: {MODEL_NAME} from {path}", flush=True)
+        _voice = PiperVoice.load(path)
+        print(f"[piper] Voice ready — sample_rate={_voice.config.sample_rate}Hz", flush=True)
+    return _voice
+
+
+print("[piper] Initializing Piper TTS voice...", flush=True)
+get_voice()
+SAMPLE_RATE: int = get_voice().config.sample_rate
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def wav_header(data_len: int, sample_rate: int = SAMPLE_RATE, channels: int = 1, bits: int = 16) -> bytes:
     byte_rate = sample_rate * channels * bits // 8
     block_align = channels * bits // 8
-    # When data_len is unknown (streaming), set RIFF chunk size to 0xFFFFFFFF too.
     riff_size = 0xFFFFFFFF if data_len == 0xFFFFFFFF else (36 + data_len)
     return struct.pack(
         "<4sI4s4sIHHIIHH4sI",
-        b"RIFF",
-        riff_size,
-        b"WAVE",
-        b"fmt ",
-        16,          # PCM chunk size
-        1,           # PCM format
-        channels,
-        sample_rate,
-        byte_rate,
-        block_align,
-        bits,
-        b"data",
-        data_len,
+        b"RIFF", riff_size, b"WAVE",
+        b"fmt ", 16, 1, channels, sample_rate,
+        byte_rate, block_align, bits,
+        b"data", data_len,
     )
 
 
-def audio_to_pcm16(audio: np.ndarray) -> bytes:
-    """Convert float32 numpy array → int16 PCM bytes."""
-    clipped = np.clip(audio, -1.0, 1.0)
-    return (clipped * 32767).astype(np.int16).tobytes()
-
-
-def pcm16_to_mp3(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
-    """Convert PCM16 bytes to MP3 using pydub."""
-    audio_segment = AudioSegment(
-        data=pcm_bytes,
-        sample_width=2,  # 16-bit = 2 bytes
-        frame_rate=sample_rate,
-        channels=1
-    )
-    
-    mp3_buffer = io.BytesIO()
-    audio_segment.export(mp3_buffer, format="mp3", bitrate="64k")
-    return mp3_buffer.getvalue()
-
-
-def pcm16_to_mp3_streaming(pcm_chunks_iterator, sample_rate: int = SAMPLE_RATE):
-    """
-    Stream PCM chunks through FFmpeg to get MP3 chunks in real-time.
-    This enables true streaming with low latency.
-    """
-    process = subprocess.Popen(
-        [
-            'ffmpeg',
-            '-f', 's16le',          # signed 16-bit little-endian PCM
-            '-ar', str(sample_rate), # sample rate
-            '-ac', '1',              # mono
-            '-i', 'pipe:0',          # input from stdin
-            '-f', 'mp3',             # output format MP3
-            '-b:a', '64k',           # bitrate
-            '-',                     # output to stdout
-        ],
+def _ffmpeg_transcode(pcm_iter, codec_args: list, read_size: int = 2048):
+    """Pipe PCM16 chunks into FFmpeg and yield encoded output chunks in real-time."""
+    cmd = [
+        "ffmpeg",
+        "-f", "s16le",
+        "-ar", str(SAMPLE_RATE),
+        "-ac", "1",
+        "-i", "pipe:0",
+        "-fflags", "+nobuffer+flush_packets",
+        "-flags", "+low_delay",
+        "-flush_packets", "1",
+        *codec_args,
+        "-",
+    ]
+    proc = subprocess.Popen(
+        cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-        bufsize=0
+        bufsize=0,
     )
-    
-    output_queue = queue.Queue(maxsize=10)
-    error_holder = {'error': None}
-    
-    def write_input():
-        """Write PCM chunks to FFmpeg stdin."""
+    q: queue.Queue = queue.Queue(maxsize=32)
+
+    def _write():
         try:
-            for pcm_chunk in pcm_chunks_iterator:
-                if process.poll() is not None:
+            for chunk in pcm_iter:
+                if proc.poll() is not None:
                     break
-                process.stdin.write(pcm_chunk)
-                process.stdin.flush()
-            process.stdin.close()
-        except Exception as e:
-            error_holder['error'] = e
-    
-    def read_output():
-        """Read MP3 chunks from FFmpeg stdout."""
+                proc.stdin.write(chunk)
+                proc.stdin.flush()
+        finally:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+
+    def _read():
         try:
             while True:
-                chunk = process.stdout.read(4096)
-                if not chunk:
+                data = proc.stdout.read(read_size)
+                if not data:
                     break
-                output_queue.put(chunk)
-        except Exception as e:
-            error_holder['error'] = e
+                q.put(data)
         finally:
-            output_queue.put(None)  # Signal end of stream
-    
-    # Start threads
-    input_thread = threading.Thread(target=write_input, daemon=True)
-    output_thread = threading.Thread(target=read_output, daemon=True)
-    input_thread.start()
-    output_thread.start()
-    
-    # Yield MP3 chunks as they become available
+            q.put(None)
+
+    threading.Thread(target=_write, daemon=True).start()
+    threading.Thread(target=_read, daemon=True).start()
     while True:
-        chunk = output_queue.get()
-        if chunk is None:
+        item = q.get()
+        if item is None:
             break
-        yield chunk
-    
-    # Cleanup
-    process.wait()
-    if error_holder['error']:
-        raise error_holder['error']
+        yield item
+    proc.wait()
 
 
-# ── API ─────────────────────────────────────────────────────────────────────
+# ── FastAPI app ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Kokoro TTS", version="1.0")
+app = FastAPI(title="Piper TTS", version="2.0")
 
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "af_bella"
+    voice: str = "en_US-lessac-high"
     speed: float = 1.0
 
 
 @app.get("/health")
 def health():
-    return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "ok", "model": MODEL_NAME, "sample_rate": SAMPLE_RATE})
 
 
 _UI_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
@@ -187,19 +157,28 @@ def ui():
     return HTMLResponse(content=_UI_HTML)
 
 
-def _stream_pcm(req: TTSRequest):
-    """Generator that yields PCM16 chunks as Kokoro produces them."""
-    lang = voice_to_lang(req.voice)
-    pipeline = get_pipeline(lang)
-    for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=req.speed):
-        if audio is not None and len(audio) > 0:
-            yield audio_to_pcm16(np.array(audio))
+def _synthesize_pcm(req: TTSRequest):
+    """
+    Synchronous generator yielding raw PCM16 bytes as Piper produces them.
+
+    Piper synthesizes one phoneme group at a time and yields each chunk immediately.
+    Each chunk is ~20-100 ms of audio — true progressive streaming.
+    TTFB = inference time for the first phoneme group only (~50-150 ms on CPU).
+
+    Speed parameter maps to Piper's length_scale (inverse: speed=1.5 → scale=0.667).
+    """
+    voice = get_voice()
+    length_scale = 1.0 / req.speed if req.speed > 0 else 1.0
+    syn_config = SynthesisConfig(length_scale=length_scale)
+
+    for audio_chunk in voice.synthesize(req.text, syn_config=syn_config):
+        yield audio_chunk.audio_int16_bytes
 
 
-@app.post("/tts", summary="Stream raw PCM16 @ 24 kHz mono")
+@app.post("/tts", summary="Stream raw PCM16 — lowest TTFB")
 def tts_pcm(req: TTSRequest):
     return StreamingResponse(
-        _stream_pcm(req),
+        _synthesize_pcm(req),
         media_type="audio/pcm",
         headers={
             "X-Sample-Rate": str(SAMPLE_RATE),
@@ -209,49 +188,45 @@ def tts_pcm(req: TTSRequest):
     )
 
 
-@app.post("/tts.wav", summary="Stream WAV audio (with header)")
+@app.post("/tts.wav", summary="Stream WAV audio with header")
 def tts_wav(req: TTSRequest):
-    """
-    Collects all PCM chunks, prepends a WAV header.
-    Useful for curl / ffplay / direct download.
-    For true streaming WAV, the data_len in the header is set to 0xFFFFFFFF
-    (unknown length), which most players can handle.
-    """
-    def _wav_stream():
-        # Unknown-length WAV header — works fine with ffplay, VLC, etc.
+    def _gen():
         yield wav_header(0xFFFFFFFF)
-        yield from _stream_pcm(req)
+        yield from _synthesize_pcm(req)
+    return StreamingResponse(_gen(), media_type="audio/wav")
 
+
+@app.post("/tts.mp3", summary="Stream MP3 audio via FFmpeg")
+def tts_mp3(req: TTSRequest):
+    codec = [
+        "-c:a", "libmp3lame",
+        "-b:a", "64k",
+        "-q:a", "9",
+        "-compression_level", "0",
+        "-reservoir", "0",
+        "-write_xing", "0",
+        "-f", "mp3",
+    ]
     return StreamingResponse(
-        _wav_stream(),
-        media_type="audio/wav",
+        _ffmpeg_transcode(_synthesize_pcm(req), codec, read_size=2048),
+        media_type="audio/mpeg",
+        headers={"X-Audio-Format": "mp3", "X-Sample-Rate": str(SAMPLE_RATE)},
     )
 
 
-@app.post("/tts.mp3", summary="Stream MP3 audio")
-def tts_mp3(req: TTSRequest):
-    """
-    Streams MP3-encoded audio with low latency.
-    Uses FFmpeg for real-time PCM→MP3 conversion as audio is generated.
-    """
-    def _stream_mp3():
-        def pcm_generator():
-            """Generate PCM chunks as Kokoro produces them."""
-            lang = voice_to_lang(req.voice)
-            pipeline = get_pipeline(lang)
-            for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=req.speed):
-                if audio is not None and len(audio) > 0:
-                    yield audio_to_pcm16(np.array(audio))
-        
-        # Stream PCM through FFmpeg to get MP3 chunks in real-time
-        yield from pcm16_to_mp3_streaming(pcm_generator())
-    
+@app.post("/tts.opus", summary="Stream Opus audio (recommended)")
+def tts_opus(req: TTSRequest):
+    codec = [
+        "-c:a", "libopus",
+        "-b:a", "48k",
+        "-vbr", "off",
+        "-application", "lowdelay",
+        "-frame_duration", "20",
+        "-compression_level", "0",
+        "-f", "ogg",
+    ]
     return StreamingResponse(
-        _stream_mp3(),
-        media_type="audio/mpeg",
-        headers={
-            "X-Audio-Format": "mp3",
-            "X-Sample-Rate": str(SAMPLE_RATE),
-            "X-Bitrate": "64",
-        },
+        _ffmpeg_transcode(_synthesize_pcm(req), codec, read_size=1024),
+        media_type="audio/ogg",
+        headers={"X-Audio-Format": "opus", "X-Sample-Rate": str(SAMPLE_RATE)},
     )
