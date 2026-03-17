@@ -1,0 +1,64 @@
+{
+    "voices": [
+        {
+            "id": "en_US-lessac-high",
+            "name": "Lessac (US)",
+            "language": "en_US",
+            "quality": "high",
+            "gender": "M",
+            "description": "Clear professional male voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        },
+        {
+            "id": "en_US-amy-medium",
+            "name": "Amy (US)",
+            "language": "en_US",
+            "quality": "medium",
+            "gender": "F",
+            "description": "Natural female voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        },
+        {
+            "id": "en_US-ryan-high",
+            "name": "Ryan (US)",
+            "language": "en_US",
+            "quality": "high",
+            "gender": "M",
+            "description": "Expressive male voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        },
+        {
+            "id": "en_GB-alan-medium",
+            "name": "Alan (UK)",
+            "language": "en_GB",
+            "quality": "medium",
+            "gender": "M",
+            "description": "British male voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        },
+        {
+            "id": "en_GB-alba-medium",
+            "name": "Alba (UK)",
+            "language": "en_GB",
+            "quality": "medium",
+            "gender": "F",
+            "description": "British female voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        },
+        {
+            "id": "en_US-libritts-high",
+            "name": "LibriTTS (US)",
+            "language": "en_US",
+            "quality": "high",
+            "gender": "N",
+            "description": "Multi-speaker neutral voice",
+            "sample_rate": 22050,
+            "url_base": ""
+        }
+    ]
+}

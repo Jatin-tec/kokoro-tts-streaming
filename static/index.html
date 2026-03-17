@@ -243,26 +243,88 @@
       optgroup {
         color: #9090b0;
       }
+      .examples {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .example-btn {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+        background: #2e2e42;
+        color: #9090b0;
+        border: 1px solid #3a3a5a;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .example-btn:hover {
+        background: #3a3a5a;
+        color: #e2e2e8;
+        border-color: #7c6af7;
+      }
+      .info {
+        margin-top: 8px;
+        font-size: 0.82rem;
+        color: #7c7c9a;
+        line-height: 1.5;
+      }
+      .info code {
+        background: #2e2e42;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.85em;
+        color: #a090ff;
+      }
     </style>
   </head>
   <body>
     <div class="card">
-      <h1><span class="dot"></span> Piper TTS</h1>
+      <h1><span class="dot"></span> Piper TTS with Emotion + SSML</h1>
 
-      <label for="text">Text</label>
-      <textarea id="text" placeholder="Enter text to synthesize…">
-Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence. Use [[phonemes]] syntax for IPA phonemes.</textarea
+      <label for="text">Text (plain or SSML)</label>
+      <textarea id="text" placeholder="Enter text or SSML markup…">
+Hello! Try the examples below to test SSML and emotions.</textarea
       >
+      
+      <div class="examples">
+        <button class="example-btn" onclick="loadExample('plain')">Plain Text</button>
+        <button class="example-btn" onclick="loadExample('pause')">With Pause</button>
+        <button class="example-btn" onclick="loadExample('emphasis')">Emphasis</button>
+        <button class="example-btn" onclick="loadExample('combined')">SSML + Emotion</button>
+        <button class="example-btn" onclick="loadExample('announcement')">Announcement</button>
+        <button class="example-btn" onclick="loadExample('excited')">Excited</button>
+      </div>
+      
+      <div class="info">
+        💡 <strong>SSML tags</strong> are stripped (won't be spoken), but breaks/pauses not yet implemented. <strong>Emotion</strong> controls voice style: speed & energy.
+      </div>
 
       <div class="row">
         <div>
           <label for="voice">Voice</label>
           <select id="voice">
-            <optgroup label="American English">
-              <option value="en_US-lessac-high" selected>lessac-high — Lessac (F, 22 kHz)</option>
-            </optgroup>
+            <option value="en_US-lessac-high">Loading voices...</option>
           </select>
         </div>
+        <div>
+          <label for="emotion">Emotion</label>
+          <select id="emotion">
+            <option value="neutral" selected>😐 Neutral</option>
+            <option value="happy">😊 Happy</option>
+            <option value="sad">😢 Sad</option>
+            <option value="angry">😠 Angry</option>
+            <option value="fear">😨 Fear</option>
+            <option value="calm">😌 Calm</option>
+            <option value="disgust">🤢 Disgust</option>
+            <option value="ps">🎉 Pleasant Surprise</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
         <div>
           <div class="speed-label-row">
             <label for="speed">Speed</label>
@@ -294,6 +356,56 @@ Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence
     </div>
 
     <script>
+      /* ── Load available voices ── */
+      async function loadVoices() {
+        try {
+          const response = await fetch('/voices');
+          const data = await response.json();
+          const voiceSelect = document.getElementById('voice');
+          
+          // Clear loading option
+          voiceSelect.innerHTML = '';
+          
+          // Group voices by language
+          const groups = {};
+          data.voices.filter(v => v.available).forEach(voice => {
+            const lang = voice.language === 'en_US' ? 'American English' : 
+                        voice.language === 'en_GB' ? 'British English' : 
+                        voice.language;
+            if (!groups[lang]) groups[lang] = [];
+            groups[lang].push(voice);
+          });
+          
+          // Create optgroups
+          Object.keys(groups).sort().forEach(lang => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = lang;
+            
+            groups[lang].forEach(voice => {
+              const option = document.createElement('option');
+              option.value = voice.id;
+              option.textContent = `${voice.name} (${voice.gender}, ${voice.quality})`;
+              if (voice.id === data.default) {
+                option.selected = true;
+              }
+              optgroup.appendChild(option);
+            });
+            
+            voiceSelect.appendChild(optgroup);
+          });
+          
+          console.log(`Loaded ${data.total} voices, ${data.voices.filter(v => v.available).length} available`);
+        } catch (error) {
+          console.error('Failed to load voices:', error);
+          // Fallback to default
+          const voiceSelect = document.getElementById('voice');
+          voiceSelect.innerHTML = '<option value="en_US-lessac-high">Lessac (US)</option>';
+        }
+      }
+      
+      // Load voices on page load
+      loadVoices();
+      
       /* ── speed slider ── */
       const speedEl = document.getElementById("speed");
       const speedVal = document.getElementById("speedVal");
@@ -302,6 +414,42 @@ Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence
         () =>
           (speedVal.textContent = parseFloat(speedEl.value).toFixed(2) + "×"),
       );
+
+      /* ── SSML + Emotion examples ── */
+      const examples = {
+        plain: { 
+          text: "Hello! Welcome to our service.", 
+          emotion: "neutral" 
+        },
+        pause: { 
+          text: "Warning! This action is irreversible.",
+          emotion: "angry" 
+        },
+        emphasis: { 
+          text: "This is extremely important information.", 
+          emotion: "angry" 
+        },
+        combined: { 
+          text: "Attention please. This is a critical system alert.", 
+          emotion: "angry" 
+        },
+        announcement: { 
+          text: "Good morning. The event will begin in five minutes.", 
+          emotion: "calm" 
+        },
+        excited: { 
+          text: "Wow! That is absolutely fantastic news!", 
+          emotion: "happy" 
+        }
+      };
+
+      function loadExample(key) {
+        const example = examples[key];
+        if (example) {
+          document.getElementById("text").value = example.text;
+          document.getElementById("emotion").value = example.emotion;
+        }
+      }
 
       /* ── waveform visualiser ── */
       const canvas = document.getElementById("waveCanvas");
@@ -368,6 +516,7 @@ Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence
         }
 
         const voice = document.getElementById("voice").value;
+        const emotion = document.getElementById("emotion").value;
         const speed = parseFloat(speedEl.value);
 
         /* reset any previous run */
@@ -386,7 +535,7 @@ Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence
         gainNode.connect(audioCtx.destination);
         startVisualiser(audioCtx, gainNode);
 
-        setStatus("spinner", "Connecting…");
+        setStatus("spinner", `Connecting (${emotion})…`);
         setProgress(0, true);
         document.getElementById("speakBtn").disabled = true;
         document.getElementById("stopBtn").style.display = "flex";
@@ -427,14 +576,14 @@ Piper is a fast, local neural TTS engine. Audio is streamed sentence by sentence
           const resp = await fetch("/tts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, voice, speed }),
+            body: JSON.stringify({ text, voice, emotion, speed }),
             signal: abortCtrl.signal,
           });
 
           if (!resp.ok)
             throw new Error(`Server ${resp.status}: ${await resp.text()}`);
 
-          setStatus("spinner", "Streaming… ");
+          setStatus("spinner", `Streaming (${emotion})… `);
           const reader = resp.body.getReader();
 
           while (true) {

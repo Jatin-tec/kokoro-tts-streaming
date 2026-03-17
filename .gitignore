@@ -1,2 +1,40 @@
-# environments files
+# Environment files
 .env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test files and outputs
+test_*.py
+test_*.wav
+emotion_*.wav
+output/
+*.wav
+*.mp3
+*.opus
+
+# Model files (should be downloaded in Docker)
+*.onnx
+*.onnx.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/

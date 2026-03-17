@@ -3,9 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: piper-tts-server
+    container_name: piper-tts
     ports:
-      - "${HOST_PORT:-5001}:5000"
+      - "8000:5000"
     environment:
       - HOST=0.0.0.0
       - PORT=5000
